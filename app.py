@@ -1,13 +1,14 @@
 import streamlit as st
-# Hapus baris: from streamlit_gsheets import GSheetsConnection
-# Ganti dengan baris di bawah ini:
-from st_gsheets_connection import GSheetsConnection
 import pandas as pd
 from datetime import datetime, date, timedelta
 import plotly.express as px
 
+# Gunakan cara ini untuk memanggil GSheetsConnection
+from streamlit_gsheets import GSheetsConnection 
+
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="E-Perpus Baitul Hikmah", layout="wide", page_icon="🕌")
+# ... sisa kode Bapak ke bawah tetap sama ...
 
 # --- KONEKSI GOOGLE SHEETS ---
 conn = st.connection("gsheets", type=GSheetsConnection)
