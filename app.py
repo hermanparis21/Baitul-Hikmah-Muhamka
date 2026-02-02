@@ -1,8 +1,9 @@
 import streamlit as st
-from st_gsheets_connection import GSheetsConnection
 import pandas as pd
 from datetime import datetime, date, timedelta
 import plotly.express as px
+# Baris di bawah ini disesuaikan agar tidak memicu ModuleNotFoundError
+from streamlit_gsheets import GSheetsConnection 
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="E-Perpus Baitul Hikmah", layout="wide", page_icon="🕌")
@@ -46,7 +47,6 @@ DENDA_PER_HARI = 500
 
 # --- FUNGSI HELPER ---
 def get_data(worksheet_name):
-    # Mengambil data terbaru tanpa cache agar tidak nyangkut data lama
     return conn.read(worksheet=worksheet_name, ttl=0)
 
 def hitung_denda(tgl_seharusnya_kembali):
@@ -65,7 +65,6 @@ def kirim_wa(nama, buku, tgl, no_wa):
     if not no_wa_bersih.startswith('62'):
         if no_wa_bersih.startswith('0'):
             no_wa_bersih = '62' + no_wa_bersih[1:]
-    
     pesan = f"Assalamu'alaikum {nama}, ini dari Perpus Baitul Hikmah SMAM4. Mengingatkan pengembalian buku '{buku}' jatuh pada {tgl}. Syukron."
     url = f"https://wa.me/{no_wa_bersih}?text={pesan.replace(' ', '%20')}"
     return url
@@ -78,36 +77,27 @@ if 'logged_in' not in st.session_state:
 if not st.session_state.logged_in:
     st.title("🕌 Perpustakaan Baitul Hikmah")
     st.caption("SMA Muhammadiyah 4 Banjarnegara")
-    
     tab_login, tab_reg = st.tabs(["🔐 Login", "📝 Registrasi Siswa"])
     
     with tab_login:
         with st.form("form_login"):
             user_input = st.text_input("Username / NIS")
             pass_input = st.text_input("Password", type="password")
-            btn_login = st.form_submit_button("Masuk")
-            
-            if btn_login:
+            if st.form_submit_button("Masuk"):
                 df_users = get_data("users")
                 if not df_users.empty:
-                    # Normalisasi data agar perbandingan teks akurat
                     u_in = str(user_input).strip()
                     p_in = str(pass_input).strip()
-                    
                     user_data = df_users[
                         (df_users['username'].astype(str).str.strip() == u_in) & 
                         (df_users['password'].astype(str).str.strip() == p_in)
                     ]
-                    
                     if not user_data.empty:
                         st.session_state.logged_in = True
                         st.session_state.user_info = user_data.iloc[0].fillna("").to_dict()
-                        st.success("Login Berhasil!")
                         st.rerun()
                     else:
                         st.error("Username atau Password salah!")
-                else:
-                    st.error("Database user kosong!")
 
     with tab_reg:
         with st.form("form_reg"):
@@ -116,36 +106,25 @@ if not st.session_state.logged_in:
             r_wa = st.text_input("Nomor WA (Contoh: 6281xxx)")
             r_kelas = st.selectbox("Pilih Kelas", LIST_KELAS)
             r_pass = st.text_input("Buat Password", type="password")
-            
             if st.form_submit_button("Daftar Sekarang"):
                 df_u = get_data("users")
-                # Urutan kolom disesuaikan agar tidak bergeser di Google Sheets
                 new_user = pd.DataFrame([{
-                    "username": str(r_nis), 
-                    "password": str(r_pass), 
-                    "role": "Siswa", 
-                    "nama": r_nama, 
-                    "kelas": r_kelas, 
-                    "no_wa": str(r_wa)
+                    "username": str(r_nis), "password": str(r_pass), 
+                    "role": "Siswa", "nama": r_nama, 
+                    "kelas": r_kelas, "no_wa": str(r_wa)
                 }])
-                
-                updated_df = pd.concat([df_u, new_user], ignore_index=True)
-                conn.update(worksheet="users", data=updated_df)
-                st.success("Registrasi Berhasil! Silakan Login di tab sebelah.")
+                conn.update(worksheet="users", data=pd.concat([df_u, new_user], ignore_index=True))
+                st.success("Registrasi Berhasil!")
 
-# --- HALAMAN UTAMA (SESUDAH LOGIN) ---
+# --- HALAMAN UTAMA ---
 else:
     u_info = st.session_state.user_info
-    
     with st.sidebar:
         st.markdown(f"### 🕌 Baitul Hikmah\n**{u_info['nama']}**")
-        st.write(f"Role: {u_info['role']}")
         if st.button("🚪 Keluar"):
             st.session_state.logged_in = False
             st.rerun()
         st.divider()
-        
-        # Menu berdasarkan Role
         if u_info['role'] == "Admin":
             nav = st.radio("Menu", ["Dashboard", "Manajemen Buku", "Transaksi Pinjam", "Laporan & WA Reminder"])
         elif u_info['role'] == "Wali Kelas":
@@ -153,100 +132,61 @@ else:
         else:
             nav = st.radio("Menu", ["Kartu Pinjam Digital", "Katalog Buku", "Pinjaman Saya"])
 
-    # --- KONTEN MENU ---
     if nav == "Dashboard":
         st.title("📊 Statistik Baitul Hikmah")
         df_p = get_data("pinjam")
         df_b = get_data("buku")
-        
         col1, col2 = st.columns(2)
         with col1:
-            if not df_p.empty:
+            if not df_p.empty and not df_b.empty:
                 populer = df_p['id_buku'].value_counts().reset_index()
                 populer.columns = ['id_buku', 'jumlah']
                 populer = pd.merge(populer, df_b[['id_buku', 'judul']], on='id_buku').head(5)
-                fig = px.bar(populer, x='jumlah', y='judul', orientation='h', 
-                             title="5 Buku Paling Populer", color_discrete_sequence=['#10b981'])
+                fig = px.bar(populer, x='jumlah', y='judul', orientation='h', title="Buku Populer", color_discrete_sequence=['#10b981'])
                 st.plotly_chart(fig, use_container_width=True)
         with col2:
-            st.metric("Total Buku", len(df_b))
-            st.metric("Buku Dipinjam", len(df_p[df_p['status'] == "Dipinjam"]))
+            st.metric("Total Koleksi", len(df_b))
 
     elif nav == "Kartu Pinjam Digital":
-        st.title("🪪 Kartu Anggota Digital")
-        st.markdown(f"""
-        <div class="digital-card">
-            <h2 style="margin:0;">BAITUL HIKMAH</h2>
-            <p>SMA Muhammadiyah 4 Banjarnegara</p>
-            <hr>
-            <h1 style="margin:10px 0;">{u_info['nama']}</h1>
-            <p style="font-size:1.2em;">NIS: {u_info['username']} | Kelas: {u_info['kelas']}</p>
-            <div style="background:white; color:black; display:inline-block; padding:10px; border-radius:10px; margin-top:10px;">
-                <b>QR CODE VALID</b>
-            </div>
-            <p style="font-size: 0.8em; margin-top:20px;">Silakan screenshot kartu ini untuk bukti di Perpustakaan.</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.title("🪪 Kartu Anggota")
+        st.markdown(f"""<div class="digital-card"><h2>BAITUL HIKMAH</h2><hr><h3>{u_info['nama']}</h3><p>NIS: {u_info['username']} | Kelas: {u_info['kelas']}</p></div>""", unsafe_allow_html=True)
 
     elif nav == "Laporan & WA Reminder":
-        st.title("📱 WA Notifikasi & Pengembalian")
+        st.title("📱 Pengingat WhatsApp")
         df_p = get_data("pinjam")
         df_u = get_data("users")
-        
         if not df_p.empty:
             merged = pd.merge(df_p, df_u[['username', 'nama', 'no_wa']], on="username", how="left")
-            df_telat = merged[merged['status'] == "Dipinjam"]
-            
-            if not df_telat.empty:
-                for i, row in df_telat.iterrows():
-                    denda = hitung_denda(row['tgl_kembali'])
-                    with st.container():
-                        st.markdown(f'<div class="glass-card">', unsafe_allow_html=True)
-                        c1, c2, c3 = st.columns([3,2,1])
-                        c1.write(f"👤 **{row['nama']}**\n\n📖 {row['id_buku']}")
-                        c2.write(f"📅 Batas: {row['tgl_kembali']}\n\n💰 Denda: Rp{denda}")
-                        
-                        url_wa = kirim_wa(row['nama'], row['id_buku'], row['tgl_kembali'], row['no_wa'])
-                        c3.markdown(f'<a href="{url_wa}" target="_blank"><button style="background:#25D366; color:white; border:none; padding:10px; border-radius:8px; width:100%; cursor:pointer;">Kirim WA</button></a>', unsafe_allow_html=True)
-                        st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                st.info("Tidak ada buku yang sedang dipinjam.")
+            for i, row in merged[merged['status'] == "Dipinjam"].iterrows():
+                with st.container():
+                    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
+                    st.write(f"👤 {row['nama']} | 📖 {row['id_buku']}")
+                    st.markdown(f'<a href="{kirim_wa(row["nama"], row["id_buku"], row["tgl_kembali"], row["no_wa"])}" target="_blank"><button style="background:#25D366; color:white; border:none; padding:8px; border-radius:5px;">Kirim WA</button></a>', unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
 
     elif nav == "Katalog Buku":
-        st.title("📚 Katalog Buku")
-        df_b = get_data("buku")
-        st.dataframe(df_b, use_container_width=True)
+        st.title("📚 Katalog")
+        st.dataframe(get_data("buku"), use_container_width=True)
 
     elif nav == "Manajemen Buku":
-        st.title("⚙️ Manajemen Buku")
+        st.title("⚙️ Manajemen")
         df_b = get_data("buku")
-        with st.expander("➕ Tambah Buku Baru"):
-            with st.form("add_book"):
-                b_id = st.text_input("ID Buku")
-                b_jd = st.text_input("Judul Buku")
-                b_js = st.selectbox("Jenis", JENIS_BUKU)
-                if st.form_submit_button("Simpan Buku"):
-                    new_b = pd.DataFrame([{"id_buku":b_id, "judul":b_jd, "jenis_buku":b_js, "status":"Tersedia"}])
-                    conn.update(worksheet="buku", data=pd.concat([df_b, new_b], ignore_index=True))
-                    st.success("Buku berhasil ditambahkan!")
-                    st.rerun()
+        with st.form("add_b"):
+            b_id = st.text_input("ID")
+            b_jd = st.text_input("Judul")
+            if st.form_submit_button("Simpan"):
+                new_b = pd.DataFrame([{"id_buku":b_id, "judul":b_jd, "status":"Tersedia"}])
+                conn.update(worksheet="buku", data=pd.concat([df_b, new_b], ignore_index=True))
+                st.rerun()
         st.dataframe(df_b)
 
     elif nav == "Transaksi Pinjam":
-        st.title("📝 Transaksi Peminjaman")
+        st.title("📝 Peminjaman")
         df_p = get_data("pinjam")
-        with st.form("form_pinjam"):
-            p_nis = st.text_input("NIS Siswa")
-            p_idb = st.text_input("ID Buku")
-            durasi = st.slider("Durasi Pinjam (Hari)", 1, 14, 7)
-            if st.form_submit_button("Proses Pinjam"):
-                tgl_kmb = date.today() + timedelta(days=durasi)
-                new_p = pd.DataFrame([{
-                    "username": p_nis, 
-                    "id_buku": p_idb, 
-                    "tgl_pinjam": str(date.today()), 
-                    "tgl_kembali": str(tgl_kmb), 
-                    "status": "Dipinjam"
-                }])
+        with st.form("p_f"):
+            p_n = st.text_input("NIS")
+            p_b = st.text_input("ID Buku")
+            if st.form_submit_button("Proses"):
+                new_p = pd.DataFrame([{"username":p_n, "id_buku":p_b, "tgl_pinjam":str(date.today()), "tgl_kembali":str(date.today()+timedelta(days=7)), "status":"Dipinjam"}])
                 conn.update(worksheet="pinjam", data=pd.concat([df_p, new_p], ignore_index=True))
-                st.success(f"Berhasil! Kembali pada {tgl_kmb}")
+                st.success("Berhasil")
