@@ -1,8 +1,10 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
+# Hapus baris: from streamlit_gsheets import GSheetsConnection
+# Ganti dengan baris di bawah ini:
+from st_gsheets_connection import GSheetsConnection
 import pandas as pd
 from datetime import datetime, date, timedelta
-import plotly.express as px  # Untuk Statistik
+import plotly.express as px
 
 # --- KONFIGURASI HALAMAN ---
 st.set_page_config(page_title="E-Perpus Baitul Hikmah", layout="wide", page_icon="🕌")
