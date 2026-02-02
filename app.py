@@ -49,8 +49,16 @@ DENDA_PER_HARI = 500
 
 # --- FUNGSI HELPER ---
 def get_data(worksheet_name):
-    return conn.read(worksheet=worksheet_name, ttl=0)
-
+    try:
+        # Gunakan parameter ttl=0 untuk bypass cache
+        return conn.read(worksheet=worksheet_name, ttl=0)
+    except Exception as e:
+        # Jika error, kita print semua nama tab yang ditemukan oleh Python ke layar
+        # Ini untuk debugging agar Bapak tahu Python "melihatnya" sebagai apa
+        st.error(f"Error: Tab '{worksheet_name}' tidak ditemukan.")
+        # Jangan biarkan aplikasi mati, berikan dataframe kosong
+        return pd.DataFrame()
+        
 def hitung_denda(tgl_seharusnya_kembali):
     tgl_skrg = date.today()
     if isinstance(tgl_seharusnya_kembali, str):
