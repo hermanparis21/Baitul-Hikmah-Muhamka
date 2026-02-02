@@ -88,27 +88,51 @@ else:
             st.session_state.logged_in = False
             st.rerun()
 
-    # --- FITUR SCAN (PAKAI KAMERA BAWAAN) ---
+    # --- FITUR SCAN (REVISI AGAR LEBIH MUDAH) ---
     if choice == "Scan Pinjam Buku":
-        st.title("📸 Scan Barcode Buku")
-        st.write("Gunakan kamera untuk mengambil foto barcode pada buku")
+        st.title("📸 Scan & Input Peminjaman")
         
-        foto = st.camera_input("Ambil Foto Barcode")
-        if foto:
-            st.image(foto, caption="Barcode terscan", width=300)
-            st.success("Foto berhasil diambil. Masukkan ID Buku di bawah untuk konfirmasi.")
-            
-        with st.form("f_pinjam"):
-            col1, col2 = st.columns(2)
-            p_idb = col1.text_input("ID Buku (Sesuai Barcode)")
-            p_nis = col1.text_input("NIS Siswa")
-            p_dur = col2.selectbox("Durasi", [7, 14, 21])
-            if st.form_submit_button("Proses Pinjam"):
-                df_p = get_data("pinjam")
-                tgl_k = date.today() + timedelta(days=p_dur)
-                new_p = pd.DataFrame([{"username":p_nis, "id_buku":p_idb, "tgl_pinjam":str(date.today()), "tgl_kembali":str(tgl_k), "status":"Dipinjam"}])
-                conn.update(worksheet="pinjam", data=pd.concat([df_p, new_p], ignore_index=True))
-                st.success("Buku Berhasil Dipinjam!")
+        col_cam, col_form = st.columns([1, 1])
+        
+        with col_cam:
+            st.subheader("1. Ambil Foto QR/Barcode")
+            foto = st.camera_input("Arahkan QR Code Buku ke sini")
+            if foto:
+                st.image(foto, caption="Foto Berhasil Diambil", width=250)
+        
+        with col_form:
+            st.subheader("2. Konfirmasi Pinjam")
+            with st.form("f_pinjam"):
+                # Admin mengisi ID berdasarkan apa yang terlihat di foto QR
+                p_idb = st.text_input("📦 Masukkan ID Buku (dari QR)")
+                p_nis = st.text_input("👤 Masukkan NIS Siswa")
+                p_dur = st.select_slider("📅 Durasi Pinjam (Hari)", options=[3, 7, 14, 21, 30], value=7)
+                
+                btn_simpan = st.form_submit_button("✅ Konfirmasi & Simpan")
+                
+                if btn_simpan:
+                    if p_idb and p_nis:
+                        df_p = get_data("pinjam")
+                        tgl_k = date.today() + timedelta(days=p_dur)
+                        new_p = pd.DataFrame([{
+                            "username": str(p_nis), 
+                            "id_buku": str(p_idb), 
+                            "tgl_pinjam": str(date.today()), 
+                            "tgl_kembali": str(tgl_k), 
+                            "status": "Dipinjam"
+                        }])
+                        conn.update(worksheet="pinjam", data=pd.concat([df_p, new_p], ignore_index=True))
+                        
+                        # Otomatis update status di tabel buku
+                        df_b = get_data("buku")
+                        if not df_b.empty:
+                            df_b.loc[df_b['id_buku'].astype(str) == str(p_idb), 'status'] = 'Dipinjam'
+                            conn.update(worksheet="buku", data=df_b)
+                            
+                        st.balloons()
+                        st.success(f"Berhasil! Buku {p_idb} dipinjam oleh {p_nis}. Kembali pada: {tgl_k}")
+                    else:
+                        st.error("Mohon isi ID Buku dan NIS!")
 
     # --- CARI BUKU ---
     elif "Cari Buku" in choice or "Kelola Buku" in choice:
